@@ -87,3 +87,8 @@
     }
   }
 }
+.settingPage { padding-bottom: 120px; }
+.settingPage button { position: relative; z-index: 5; }
+/* 토스트 래퍼가 있다면 클릭 통과 */
+.offlineToast { pointer-events: none; }
+.offlineToast .card, .offlineToast button { pointer-events: auto; }
