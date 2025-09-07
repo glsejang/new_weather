@@ -15,15 +15,22 @@ import App from './App.jsx'
 import store from './store'
 
 const isProd = import.meta.env.MODE === 'production'
-// 서브경로로 배포한다면 해시 라우터가 가장 안전
-const Router = isProd ? HashRouter : BrowserRouter
+// GitHub Pages(서브경로) → HashRouter가 가장 안전
+const RouterComp = isProd ? HashRouter : BrowserRouter
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <Provider store={store}>
-      <Router basename={import.meta.env.BASE_URL}>
-        <App />
-      </Router>
+      {/* prod(HashRouter)에는 basename 주지 말기! */}
+      {isProd ? (
+        <RouterComp>
+          <App />
+        </RouterComp>
+      ) : (
+        <RouterComp basename={import.meta.env.BASE_URL}>
+          <App />
+        </RouterComp>
+      )}
     </Provider>
-  </StrictMode>,
+  </StrictMode>
 )
