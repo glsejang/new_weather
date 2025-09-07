@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { makeWeatherPrompt } from '../apis/makePrompt';
 import { askGemini } from '../apis/ask';
@@ -6,6 +6,43 @@ import { groupingDate } from '../apis/groupingDate';
 
 function asList(v) { return Array.isArray(v) ? v : v ? [v] : []; }
 const iso = (d='') => String(d).slice(0,10);
+
+/* ===== 키 표준화 유틸 ===== */
+// 날짜는 항상 YYYY-MM-DD
+function toISODateStr(d) {
+  if (!d) return '';
+  try {
+    const dt = new Date(String(d));
+    if (!isNaN(dt)) return dt.toISOString().slice(0, 10);
+  } catch {}
+  return String(d).slice(0, 10);
+}
+// 저장용 도시 키(표시는 원문 유지)
+const canonCityKey = (c) => String(c || 'default').trim().toLowerCase();
+// 저장용 식물 키(표시는 원문 유지): 이모지/중복공백 제거 + 소문자
+function canonPlant(name='') {
+  return String(name)
+    .normalize('NFKC')
+    .replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, '') // 이모지 제거
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+// 체크 항목 텍스트 표준화(공백/대소문자/전각 등 정리)
+function canonText(s='') {
+  return String(s)
+    .normalize('NFKC')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+// 텍스트 기반 키(id) 만들기 (순서 변화에도 견고)
+function makeItemKey(dateStr, plantName, type/* 'todo'|'caution' */, textOrIdx) {
+  const d = toISODateStr(dateStr);
+  const p = canonPlant(plantName);
+  const id = typeof textOrIdx === 'string' ? hashStr(canonText(textOrIdx)) : String(textOrIdx); // 텍스트 우선
+  return `${d}-${p}-${type}-${id}`;
+}
 
 function conditionToTheme(text = '', hi) {
   const t = String(text).toLowerCase();
@@ -18,7 +55,34 @@ function conditionToTheme(text = '', hi) {
   return 'sunny';
 }
 
-// 변형(va~vf)
+function buildTodoKey(city, plants, forecastDays, variant = 'v1') {
+  const day = new Date().toISOString().slice(0,10);       // 날짜 바뀌면 자연 갱신
+  const p = [...(plants||[])].map(String).sort();         // 순서 영향 제거
+  // 날씨 스냅샷(너무 민감하지 않게 라운딩)
+  const f = (forecastDays||[]).slice(0,7).map(d => {
+    const date = (d?.date) || (d?.date_epoch ? new Date(d.date_epoch*1000).toISOString().slice(0,10) : '');
+    const text = d?.day?.condition?.text ?? d?.condition?.text ?? d?.condition ?? '';
+    const hi = Math.round(d?.day?.maxtemp_c ?? d?.maxtemp_c ?? 0);
+    const lo = Math.round(d?.day?.mintemp_c ?? d?.mintemp_c ?? 0);
+    const pop = Math.round(((d?.day?.daily_chance_of_rain ?? d?.daily_chance_of_rain ?? 0)/10))*10; // 10% 단위
+    return { date, t: conditionToTheme(text, hi), hi, lo, pop };
+  });
+  const payload = JSON.stringify({ city, p, f, day, variant });
+  return String(hashStr(payload));
+}
+
+// 간단 캐시 API(localStorage)
+const TODO_CACHE_PREFIX = 'todos:';
+const todoCache = {
+  get(key){
+    try{ const raw = localStorage.getItem(TODO_CACHE_PREFIX+key); return raw ? JSON.parse(raw) : null; }catch{ return null; }
+  },
+  set(key, value){
+    try{ localStorage.setItem(TODO_CACHE_PREFIX+key, JSON.stringify(value)); }catch{}
+  }
+};
+
+// 해시
 function hashStr(s) {
   let h = 0;
   for (let i = 0; i < s.length; i++) { h = (h << 5) - h + s.charCodeAt(i); h |= 0; }
@@ -26,27 +90,28 @@ function hashStr(s) {
 }
 const VARIANTS = ["va","vb","vc","vd","ve","vf"];
 
-/* ✅ 오늘(첫 카드) 진행률 요약을 홈에서 쓰도록 저장하기 위한 함수 */
+/* ✅ 홈 진행 칩 요약: 표시는 원문, 조회키는 텍스트 키 사용 */
 function summarizeProgressForDay(day, doneSet) {
   if (!day?.tasks?.length) return [];
   const byPlant = new Map();
+  const dnorm = toISODateStr(day.date);
 
   day.tasks.forEach((task) => {
-    const name = task.plantName;
+    const name = task.plantName; // 표시용 그대로
     if (!byPlant.has(name)) byPlant.set(name, { done: 0, total: 0 });
-
     const acc = byPlant.get(name);
+
     const todos = asList(task.todos);
     const cautions = asList(task.cautions);
 
-    todos.forEach((_, j) => {
+    todos.forEach((t) => {
       acc.total += 1;
-      const k = `${day.date}-${task.plantName}-todo-${j}`;
+      const k = makeItemKey(dnorm, task.plantName, 'todo', t);
       if (doneSet.has(k)) acc.done += 1;
     });
-    cautions.forEach((_, j) => {
+    cautions.forEach((c) => {
       acc.total += 1;
-      const k = `${day.date}-${task.plantName}-caution-${j}`;
+      const k = makeItemKey(dnorm, task.plantName, 'caution', c);
       if (doneSet.has(k)) acc.done += 1;
     });
   });
@@ -66,19 +131,28 @@ export default function Todo() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [doneSet, setDoneSet] = useState(new Set());
+  const [doneHydrated, setDoneHydrated] = useState(false); // 복원 완료 플래그
 
-  const storageKey = useMemo(() => `todo-done-${city || 'default'}`, [city]);
+  const storageKey = useMemo(() => `todo-done-${canonCityKey(city)}`, [city]);
 
-  // 복원/저장
+  // 복원(도시 확정 후)
   useEffect(() => {
-    try { const raw = localStorage.getItem(storageKey); if (raw) setDoneSet(new Set(JSON.parse(raw))); } catch {}
-  }, [storageKey]);
+    if (!city) return; // city 확정 전에는 복원하지 않음(‘default’ 초기화 방지)
+    try {
+      const raw = localStorage.getItem(storageKey);
+      if (raw) setDoneSet(new Set(JSON.parse(raw)));
+    } catch {}
+    setDoneHydrated(true);
+  }, [city, storageKey]);
+
+  // 저장(복원 완료 후에만)
   useEffect(() => {
+    if (!doneHydrated) return;
     try { localStorage.setItem(storageKey, JSON.stringify(Array.from(doneSet))); } catch {}
-  }, [doneSet, storageKey]);
+  }, [doneSet, storageKey, doneHydrated]);
 
-  const toggleDone = (date, plantName, type, idx) => {
-    const key = `${date}-${plantName}-${type}-${idx}`;
+  const toggleDone = (date, plantName, type, payload /* 텍스트 또는 인덱스 */) => {
+    const key = makeItemKey(date, plantName, type, payload); // 텍스트 기반 키
     setDoneSet(prev => {
       const next = new Set(prev);
       next.has(key) ? next.delete(key) : next.add(key);
@@ -86,7 +160,7 @@ export default function Todo() {
     });
   };
 
-  // 프롬프트
+  // 프롬프트(메모)
   const prompt = useMemo(() => {
     if (!city || !plants?.length || !forecast?.length) return '';
     return makeWeatherPrompt(city, forecast, plants);
@@ -99,6 +173,12 @@ export default function Todo() {
     return [];
   }, [forecast]);
 
+  // 의존성 키(같은 조건이면 재생성 금지)
+  const depsKey = useMemo(() => {
+    if (!city || !plants?.length || !forecastDays?.length) return '';
+    return buildTodoKey(city, plants, forecastDays, 'v1'); // 프롬프트 수정시 'v2'
+  }, [city, plants, forecastDays]);
+
   const getThemeForDate = (dateStr) => {
     const key = iso(dateStr);
     const f = forecastDays.find(d => iso(d?.date) === key || iso(d?.date_epoch ? new Date(d.date_epoch*1000).toISOString() : '') === key);
@@ -107,38 +187,102 @@ export default function Todo() {
     return conditionToTheme(text, hi);
   };
 
-  // 생성
+  // 생성(캐시 우선, depsKey 바뀔 때만)
   useEffect(() => {
-    if (!prompt) return;
+    if (!depsKey) return;
+
     const controller = new AbortController();
     (async () => {
       try {
         setIsLoading(true); setError('');
-        const raw = await askGemini(prompt, { signal: controller.signal });
-        const list = raw ?? [];
+
+        // 1) 캐시 체크
+        const cached = todoCache.get(depsKey);
+        if (cached?.list && Array.isArray(cached.list)) {
+          setTodos(cached.list);
+          const grouped = groupingDate(cached.list) ?? [];
+          setDateGroupedTodos(grouped);
+          setIsLoading(false);
+          return;
+        }
+
+        // 2) 미존재 시에만 프롬프트 생성 & 호출
+        const promptStr = makeWeatherPrompt(city, forecast, plants);
+        const list = await askGemini(promptStr, { signal: controller.signal }) || [];
+
+        // 3) 상태 & 캐시 저장
         setTodos(list);
         const grouped = groupingDate(list) ?? [];
         setDateGroupedTodos(grouped);
+
+        todoCache.set(depsKey, { list, createdAt: Date.now() });
       } catch (e) {
         if (e?.name !== 'AbortError') {
-          console.error(e); setError('투두리스트 생성 중 오류가 발생했어요.');
+          console.error(e);
+          setError('투두리스트 생성 중 오류가 발생했어요.');
         }
-      } finally { setIsLoading(false); }
+      } finally {
+        setIsLoading(false);
+      }
     })();
-    return () => controller.abort();
-  }, [prompt]);
 
-  /* ✅ 홈 진행 칩용 요약 저장 */
+    return () => controller.abort();
+  }, [depsKey, city, plants, forecast]); // prompt 대신 depsKey 중심
+
+  /* 1회 마이그레이션: 예전 "인덱스 기반 키" → "텍스트 기반 키"로 변환 */
+  const migratedTextRef = useRef(false);
   useEffect(() => {
+    if (!doneHydrated || !dateGroupedTodos?.length || migratedTextRef.current) return;
+
+    const next = new Set(doneSet);
+    let touched = false;
+
+    dateGroupedTodos.slice(0, 7).forEach(day => {
+      const dnorm = toISODateStr(day.date);
+      day.tasks?.forEach(task => {
+        const ts = asList(task.todos);
+        const cs = asList(task.cautions);
+
+        ts.forEach((t, j) => {
+          const old1 = `${dnorm}-${task.plantName}-todo-${j}`;             // 예전 키(식물명 원문+인덱스)
+          const old2 = `${dnorm}-${canonPlant(task.plantName)}-todo-${j}`; // 예전 키(식물명 표준화+인덱스)
+          const neo  = makeItemKey(dnorm, task.plantName, 'todo', t);      // 새 키(텍스트 기반)
+          if (next.has(old1) || next.has(old2)) {
+            next.delete(old1); next.delete(old2);
+            next.add(neo); touched = true;
+          }
+        });
+
+        cs.forEach((c, j) => {
+          const old1 = `${dnorm}-${task.plantName}-caution-${j}`;
+          const old2 = `${dnorm}-${canonPlant(task.plantName)}-caution-${j}`;
+          const neo  = makeItemKey(dnorm, task.plantName, 'caution', c);
+          if (next.has(old1) || next.has(old2)) {
+            next.delete(old1); next.delete(old2);
+            next.add(neo); touched = true;
+          }
+        });
+      });
+    });
+
+    if (touched) setDoneSet(next);
+    migratedTextRef.current = true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doneHydrated, dateGroupedTodos]);
+
+  /* ✅ 홈 진행 칩용 요약 (표시는 원문, 키는 텍스트 기반) */
+  useEffect(() => {
+    if (!doneHydrated) return;
     if (!city || !dateGroupedTodos?.length) return;
     const todayCard = dateGroupedTodos[0];
     const summary = summarizeProgressForDay(todayCard, doneSet);
     try { localStorage.setItem(`todo-progress-latest-${city}`, JSON.stringify(summary)); } catch {}
-  }, [city, dateGroupedTodos, doneSet]);
+  }, [city, dateGroupedTodos, doneSet, doneHydrated]);
 
   if (!city || !plants?.length || !forecast?.length) {
     return <div>필수 정보가 없습니다. 도시/식물/예보를 다시 선택해주세요.</div>;
   }
+  if (!doneHydrated) return <div>기록 불러오는 중...</div>;
   if (isLoading) return <div>투두리스트를 생성하는 중...</div>;
   if (error) return <div>{error}</div>;
 
@@ -151,14 +295,15 @@ export default function Todo() {
         const theme = getThemeForDate(day.date);
         const v = VARIANTS[hashStr(String(day.date ?? index)) % VARIANTS.length];
 
-        // 진행도(간단): todos + cautions 합 기준
+        // 진행도(텍스트 기반 키로 계산)
         let total = 0, done = 0;
+        const dnorm = toISODateStr(day.date);
         day.tasks?.forEach((task) => {
           const ts = asList(task.todos);
           const cs = asList(task.cautions);
           total += ts.length + cs.length;
-          ts.forEach((_, j) => { if (doneSet.has(`${day.date}-${task.plantName}-todo-${j}`)) done += 1; });
-          cs.forEach((_, j) => { if (doneSet.has(`${day.date}-${task.plantName}-caution-${j}`)) done += 1; });
+          ts.forEach((t) => { if (doneSet.has(makeItemKey(dnorm, task.plantName, 'todo', t))) done += 1; });
+          cs.forEach((c) => { if (doneSet.has(makeItemKey(dnorm, task.plantName, 'caution', c))) done += 1; });
         });
         const pct = total ? Math.round((done/total)*100) : 0;
 
@@ -166,7 +311,7 @@ export default function Todo() {
           <section key={day.date} className={`tcard ${theme} ${v}`}>
             {/* 헤더 영역 */}
             <header className="thead">
-              <div className="tdate">{day.date}</div>
+              <div className="tdate">{dnorm}</div>
               <div className="tmeta">
                 <span className="tpct">{pct}%</span>
               </div>
@@ -189,28 +334,28 @@ export default function Todo() {
                   const todos = asList(task.todos);
                   const cautions = asList(task.cautions);
                   return (
-                    <div key={`${day.date}-${task.plantName}-${i}`} className="task">
+                    <div key={`${dnorm}-${task.plantName}-${i}`} className="task">
                       <div className="plant">{task.plantName}</div>
 
                       {todos.length > 0 && (
                         <ul className="todos">
                           {todos.map((t, j) => {
-                            const key = `${day.date}-${task.plantName}-todo-${j}`;
-                            const done = doneSet.has(key);
+                            const key = makeItemKey(dnorm, task.plantName, 'todo', t);
+                            const checked = doneSet.has(key);
                             return (
                               <li
                                 key={key}
-                                className={done ? 'done' : ''}
+                                className={checked ? 'done' : ''}
                                 role="checkbox"
-                                aria-checked={done}
+                                aria-checked={checked}
                                 tabIndex={0}
-                                onClick={() => toggleDone(day.date, task.plantName, 'todo', j)}
+                                onClick={() => toggleDone(dnorm, task.plantName, 'todo', t)}
                                 onKeyDown={(e) => {
                                   if (e.key === 'Enter' || e.key === ' ') {
-                                    e.preventDefault(); toggleDone(day.date, task.plantName, 'todo', j);
+                                    e.preventDefault(); toggleDone(dnorm, task.plantName, 'todo', t);
                                   }
                                 }}
-                                title={done ? '완료됨' : '클릭하여 완료 표시'}
+                                title={checked ? '완료됨' : '클릭하여 완료 표시'}
                               >
                                 {t}
                               </li>
@@ -222,22 +367,22 @@ export default function Todo() {
                       {cautions.length > 0 && (
                         <ul className="cautions">
                           {cautions.map((c, j) => {
-                            const key = `${day.date}-${task.plantName}-caution-${j}`;
-                            const done = doneSet.has(key);
+                            const key = makeItemKey(dnorm, task.plantName, 'caution', c);
+                            const checked = doneSet.has(key);
                             return (
                               <li
                                 key={key}
-                                className={done ? 'done' : ''}
+                                className={checked ? 'done' : ''}
                                 role="checkbox"
-                                aria-checked={done}
+                                aria-checked={checked}
                                 tabIndex={0}
-                                onClick={() => toggleDone(day.date, task.plantName, 'caution', j)}
+                                onClick={() => toggleDone(dnorm, task.plantName, 'caution', c)}
                                 onKeyDown={(e) => {
                                   if (e.key === 'Enter' || e.key === ' ') {
-                                    e.preventDefault(); toggleDone(day.date, task.plantName, 'caution', j);
+                                    e.preventDefault(); toggleDone(dnorm, task.plantName, 'caution', c);
                                   }
                                 }}
-                                title={done ? '확인됨' : '클릭하여 확인 표시'}
+                                title={checked ? '확인됨' : '클릭하여 확인 표시'}
                               >
                                 {c}
                               </li>

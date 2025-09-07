@@ -8,6 +8,7 @@ import { useSwipeable } from 'react-swipeable';
 import { useNavigate } from 'react-router-dom';
 import { setForecast } from '../features/forecastSlice';
 import { getSolarTerm } from '../data/solarTerms';
+const DEBUG_WEATHER = true;
 
 const REFRESH_THRESHOLD = 72;
 const NAV_THRESHOLD = 64;
@@ -104,11 +105,41 @@ export default function Home() {
   const minTemp = num(today?.minTemp ?? get(today, ['day', 'mintemp_c']) ?? today?.mintemp_c);
   const avgHumidity = num(today?.humidity ?? get(today, ['day', 'avghumidity']));
   const uv = num(today?.uv ?? get(today, ['day', 'uv']));
-  const windKph = num(today?.maxwind_kph ?? get(today, ['day', 'maxwind_kph']));
-  const windMs = num(today?.maxWind ?? get(today, ['day', 'maxwind_m_s']), windKph ? windKph / 3.6 : 0);
-  const rainProb = num(today?.rainProb ?? today?.willItRain ?? get(today, ['day', 'daily_chance_of_rain']));
-  const condText = today?.day?.condition?.text ?? today?.condition?.text ?? today?.condition ?? '';
+  const windKph = num(
+    today?.maxWindKph ??              // ← 너의 응답 구조(camelCase)
+    today?.maxwind_kph ??             // 혹시 다른 스키마
+    get(today, ['day', 'maxwind_kph']),
+    NaN
+  );
 
+  const windMsSrc =
+    today?.maxWind ??                 // m/s로 오는 경우
+    today?.maxwind_m_s ??
+    get(today, ['day', 'maxwind_m_s']);
+
+  const windMs = Number.isFinite(windMsSrc)
+    ? windMsSrc
+    : (Number.isFinite(windKph) ? windKph / 3.6 : NaN); 
+
+  function windLabel(ms) {
+    if (!Number.isFinite(ms)) return '--';
+    if (ms < 0.3)   return '잔잔';       // Beaufort 0
+    if (ms < 3.4)   return '약함';       // 0.3–3.3 m/s
+    if (ms < 8.0)   return '보통';       // 3.4–7.9
+    if (ms < 13.9)  return '강함';       // 8.0–13.8
+    return '매우 강함';                  // ≥13.9
+  }
+
+
+
+  const rainProb = num(today?.rainProb ?? today?.willItRain ?? get(today, ['day', 'daily_chance_of_rain']));
+  const condTextRaw =
+    today?.conditionKo ??
+    today?.conditionEn ??
+    today?.day?.condition?.text ??
+    today?.condition?.text ??
+    today?.condition ?? '';
+  const condText = String(condTextRaw).trim();
   const dominantClass = pickDominantClass(days);
   const themeLabel = labelFor(condText);
   const solarTerm = getSolarTerm();
@@ -118,18 +149,52 @@ export default function Home() {
   const recoPlant = (plantMap[weatherKey] || plantMap.default)[0];
 
   // 데이터 fetch
-  const fetchAndSetForecast = async () => {
-    if (!city) return;
-    setIsLoading(true);
-    try {
-      const newForecastData = await getWeeklyWeather(cityNameMap[city]);
-      dispatch(setForecast(newForecastData));
-    } catch (e) {
-      console.error('날씨 정보를 불러오는 데 실패했습니다.', e);
-    } finally {
-      setIsLoading(false);
+const fetchAndSetForecast = async () => {
+  if (!city) return;
+  setIsLoading(true);
+  try {
+    const apiCity = cityNameMap[city];
+    const newForecastData = await getWeeklyWeather(apiCity);
+
+    if (DEBUG_WEATHER) {
+      console.groupCollapsed(
+        `[weather] raw response for "${city}" → "${apiCity}"`
+      );
+      console.log('raw:', newForecastData);
+
+      // 배열/객체 둘 다 대응
+      const days = Array.isArray(newForecastData)
+        ? newForecastData
+        : (newForecastData?.forecastday ?? []);
+
+      console.log('days length:', days.length);
+
+      // 핵심 필드만 추려서 보기 쉽게 출력
+      const peek = days.map((d, i) => ({
+        idx: i,
+        date: d?.date ?? (d?.date_epoch ? new Date(d.date_epoch * 1000).toISOString().slice(0, 10) : ''),
+        condition: d?.day?.condition?.text ?? d?.condition?.text ?? d?.condition ?? '',
+        maxtemp_c: d?.day?.maxtemp_c ?? d?.maxtemp_c ?? null,
+        mintemp_c: d?.day?.mintemp_c ?? d?.mintemp_c ?? null,
+        avghumidity: d?.day?.avghumidity ?? d?.humidity ?? null,
+        uv: d?.day?.uv ?? d?.uv ?? null,
+        // 바람: 단위가 다를 수 있으니 둘 다 확인
+        maxwind_kph: d?.day?.maxwind_kph ?? d?.maxwind_kph ?? null,
+        maxwind_m_s: d?.day?.maxwind_m_s ?? d?.maxWind ?? null,
+        // 강수확률
+        pop: d?.day?.daily_chance_of_rain ?? d?.daily_chance_of_rain ?? null,
+      }));
+      console.table(peek);
+      console.groupEnd();
     }
-  };
+
+    dispatch(setForecast(newForecastData));
+  } catch (e) {
+    console.error('날씨 정보를 불러오는 데 실패했습니다.', e);
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   // 제스처
   const handlers = useSwipeable({
@@ -269,7 +334,7 @@ export default function Home() {
               </div>
               <div className="metric">
                 <div className="k">바람</div>
-                <div className="v">{windMs ? `${windMs.toFixed(1)} m/s` : '--'}</div>
+                <div className="v">{windLabel(windMs)}</div>
               </div>
               <div className="metric">
                 <div className="k">습도</div>
