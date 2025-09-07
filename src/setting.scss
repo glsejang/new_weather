@@ -92,3 +92,16 @@
 /* 토스트 래퍼가 있다면 클릭 통과 */
 .offlineToast { pointer-events: none; }
 .offlineToast .card, .offlineToast button { pointer-events: auto; }
+
+/* 버튼 위를 덮는 장식/배경 레이어 클릭 차단 */
+.hero::before,
+.hero::after,
+.bg-overlay,
+.fx-gradient {
+  pointer-events: none !important;
+}
+
+/* 모바일 주소줄 변동으로 100vh 깨짐 방지 */
+.app, .screen, .settingPage {
+  min-height: 100dvh;
+}

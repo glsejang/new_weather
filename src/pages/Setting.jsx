@@ -22,6 +22,17 @@ function Setting() {
     fetchData();
   }, []);
 
+  const hardGoHome = () => {
+    // prod(HashRouter) 기준 강제 홈
+    if (location.hash !== '#/' && location.hash !== '#') {
+      location.hash = '#/';
+      return;
+    }
+    // dev(BrowserRouter) 대비
+    const base = import.meta.env.BASE_URL || '/';
+    if (location.pathname !== base) location.pathname = base;
+  };
+
   const handleComplete = async () => {
     if (isSaving) return;
     setIsSaving(true);
@@ -30,13 +41,19 @@ function Setting() {
       await setUserData(savedData);
       console.log('저장 완료, 홈으로 이동 시도');
 
-      // 라우터가 basename/해시를 알아서 처리
+      // 1차: 정상 라우팅
       navigate('/', { replace: true });
 
-      // (선택) 아주 드물게 라우터가 못 잡는 경우를 위한 안전망
-      // setTimeout(() => {
-      //   if (location.hash && !location.hash.endsWith('/')) location.hash = '#/';
-      // }, 50);
+      // 2차: 설치형/모바일에서 간헐적 네비 실패 대비
+      setTimeout(() => {
+        const atHome =
+          (location.hash === '#/' || location.hash === '#') ||
+          (location.pathname === (import.meta.env.BASE_URL || '/'));
+        if (!atHome) {
+          console.warn('[Setting] navigate 실패 감지 → hard fallback');
+          hardGoHome();
+        }
+      }, 60);
     } catch (e) {
       console.error('저장 실패 ❌', e);
       alert('저장 중 오류가 발생했습니다. 콘솔을 확인해주세요.');
@@ -69,7 +86,13 @@ function Setting() {
         <p>식물: {savedData.plants.length > 0 ? savedData.plants.join(', ') : '없음'}</p>
       </div>
 
-      <button onClick={handleComplete} disabled={isSaving}>
+      <button
+        type="button"
+        onClick={handleComplete}
+        onTouchEnd={(e) => { e.preventDefault(); handleComplete(); }} // iOS/설치형 보강
+        disabled={isSaving}
+        style={{ position: 'relative', zIndex: 10000 }}
+      >
         {isSaving ? '저장 중…' : '완료'}
       </button>
     </div>
