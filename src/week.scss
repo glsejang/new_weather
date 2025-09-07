@@ -1,0 +1,326 @@
+@use "sass:map";
+
+/* =======================================================================
+   Week Page (Colorful Cards, Variants for Diversity)
+   - 칩 제거 + 타이틀 축소
+   - 카드 크기 넉넉하게 (스크롤 가능)
+   - 날씨별 컬러 테마
+   - 변형(va~vf)으로 같은 날씨에도 색상 차이 부여
+======================================================================= */
+
+.week {
+  --gap: 14px;            /* 카드 간격 */
+  --padX: var(--space-4);
+  --padY: 18px;
+
+  min-height: 100dvh;
+  background: var(--bg);
+  padding: var(--padY) var(--padX);
+  color: var(--text);
+
+  /* ===== 상단 타이틀 ===== */
+  .week-title {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 12px;
+
+    h1 {
+      font-size: clamp(16px, 3.2vw, 18px);
+      font-weight: 800;
+      letter-spacing: -0.2px;
+    }
+    .hint {
+      font-size: var(--fz-xs);
+      color: var(--muted);
+      opacity: 0.8;
+      user-select: none;
+      white-space: nowrap;
+    }
+  }
+
+  .week-chrome { margin-bottom: 12px; }
+
+  /* ===== 카드 리스트 ===== */
+  .week-grid {
+    display: flex;
+    flex-direction: column;
+    gap: var(--gap);
+  }
+
+  /* ===================================================================
+     CARD 기본 스타일
+  =================================================================== */
+  .day-card {
+    position: relative;
+    overflow: hidden;
+    padding: 20px;                 /* 넉넉한 내부 여백 */
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-md);
+
+    /* 기본 테마 변수 */
+    --g1: #f9fafb;
+    --g2: #eef1f5;
+    --accent: #ff9f65;
+    --ink: #111218;
+    --ink-soft: rgba(17,18,24,.65);
+    --chip-bg: rgba(255,255,255,.92);
+    --chip-border: rgba(255,255,255,.45);
+
+    /* 배경 (variants에서 오버라이드됨) */
+    background: linear-gradient(180deg, var(--g1), var(--g2));
+
+    /* 내부 레이아웃 */
+    .row {
+      width: 100%;
+      display: grid;
+      grid-template-columns: 1.2fr 1fr;
+      gap: 14px;
+      align-items: center;
+      color: var(--ink);
+    }
+
+    .col-left {
+      .date {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+        margin-bottom: 10px;
+
+        .d {
+          font-weight: 800;
+          font-size: clamp(18px, 5vw, 24px);
+          line-height: 1.1;
+        }
+        .w {
+          font-size: var(--fz-xs);
+          color: var(--ink-soft);
+        }
+      }
+
+      .temp-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        border-radius: 999px;
+        padding: 8px 12px;
+        background: var(--chip-bg);
+        border: 1px solid var(--chip-border);
+        box-shadow: var(--shadow-sm);
+        font-weight: 700;
+        color: var(--ink);
+
+        .max { font-size: clamp(15px, 4.2vw, 18px); }
+        .min { font-size: var(--fz-xs); color: var(--ink-soft); }
+        .dot {
+          width: 6px; height: 6px; border-radius: 50%;
+          background: currentColor; opacity: .25;
+        }
+      }
+
+      .temp-range {
+        margin-top: 12px;
+        height: 8px;
+        border-radius: 999px;
+        background: rgba(255,255,255,.45);
+        position: relative;
+        overflow: hidden;
+        border: 1px solid var(--chip-border);
+
+        .fill {
+          position: absolute;
+          inset: 0;
+          transform-origin: left center;
+          transform: scaleX(calc(var(--t, 0) / 100));
+          background: linear-gradient(90deg, var(--accent), var(--accent));
+        }
+      }
+    }
+
+    .col-right {
+      display: grid;
+      justify-items: end;
+      gap: 10px;
+
+      .cond {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 10px;
+        border-radius: 12px;
+        background: var(--chip-bg);
+        border: 1px solid var(--chip-border);
+        box-shadow: var(--shadow-sm);
+        font-size: var(--fz-xs);
+        color: var(--ink);
+        font-weight: 700;
+      }
+
+      .badges {
+        display: flex;
+        gap: 8px;
+
+        .badge {
+          min-width: 56px;
+          text-align: center;
+          padding: 6px 8px;
+          border-radius: 10px;
+          background: var(--chip-bg);
+          border: 1px solid var(--chip-border);
+          box-shadow: var(--shadow-sm);
+          font-size: var(--fz-xs);
+          color: var(--ink-soft);
+
+          b {
+            display: block;
+            color: var(--ink);
+            font-size: 12px;
+            margin-bottom: 2px;
+          }
+        }
+      }
+    }
+  }
+
+  /* ===================================================================
+     THEME PRESETS (날씨별)
+  =================================================================== */
+  .day-card.sunny,
+  .day-card.warm {
+    --g1: #ffcc73;
+    --g2: #ff9b54;
+    --accent: #ffc069;
+    --ink: #1f1208;
+    --ink-soft: rgba(31,18,8,.7);
+    --chip-bg: rgba(255,255,255,.92);
+    --chip-border: rgba(255,255,255,.45);
+  }
+
+  .day-card.cloudy {
+    --g1: #9aa1a9;
+    --g2: #5e6670;
+    --accent: #cfd6de;
+    --ink: #ffffff;
+    --ink-soft: rgba(255,255,255,.8);
+    --chip-bg: rgba(255,255,255,.15);
+    --chip-border: rgba(255,255,255,.25);
+  }
+
+  .day-card.rain {
+    --g1: #4ec7a4;
+    --g2: #2f9f8b;
+    --accent: #b7ffe7;
+    --ink: #0e1a14;
+    --ink-soft: rgba(14,26,20,.7);
+    --chip-bg: rgba(255,255,255,.9);
+    --chip-border: rgba(255,255,255,.45);
+  }
+
+  .day-card.thunder {
+    --g1: #7166ff;
+    --g2: #6631c7;
+    --accent: #c7b8ff;
+    --ink: #ffffff;
+    --ink-soft: rgba(255,255,255,.85);
+    --chip-bg: rgba(255,255,255,.14);
+    --chip-border: rgba(255,255,255,.28);
+  }
+
+  .day-card.snow {
+    --g1: #cfe9ff;
+    --g2: #9dd0ff;
+    --accent: #ffffff;
+    --ink: #0d2436;
+    --ink-soft: rgba(13,36,54,.7);
+    --chip-bg: rgba(255,255,255,.92);
+    --chip-border: rgba(255,255,255,.5);
+  }
+
+  .day-card.sunset {
+    --g1: #ff9a7b;
+    --g2: #ff6b6b;
+    --accent: #ffd0c3;
+    --ink: #2a0e0c;
+    --ink-soft: rgba(42,14,12,.7);
+    --chip-bg: rgba(255,255,255,.9);
+    --chip-border: rgba(255,255,255,.45);
+  }
+
+  .day-card.haze {
+    --g1: #d9d2c4;
+    --g2: #c3b9a8;
+    --accent: #f3efe8;
+    --ink: #26231d;
+    --ink-soft: rgba(38,35,29,.7);
+    --chip-bg: rgba(255,255,255,.88);
+    --chip-border: rgba(255,255,255,.45);
+  }
+
+  /* ===================================================================
+     VARIANTS (같은 날씨에도 색 변화를 주는 보정 레이어)
+  =================================================================== */
+    .day-card {
+    --variant-strength: 0%;
+    --variant-tint: transparent;
+
+    background: linear-gradient(
+        180deg,
+        color-mix(in oklab, var(--g1) calc(100% - var(--variant-strength)),
+                        var(--variant-tint) var(--variant-strength)),
+        color-mix(in oklab, var(--g2) calc(100% - var(--variant-strength)),
+                        var(--variant-tint) var(--variant-strength))
+    );
+
+    /* 게이지/포인트 컬러도 변형 톤 반영 */
+    --accent: color-mix(in oklab, var(--accent) 78%, var(--variant-tint) 22%);
+    }
+
+    /* 사선 하이라이트(은근히 입체감 ↑) */
+    .day-card::before {
+    /* 기존 before가 없다면 추가, 이미 있으면 아래만 합쳐도 됨 */
+    content: "";
+    position: absolute; inset: 0;
+    background:
+        linear-gradient(135deg, rgba(255,255,255,.18), rgba(255,255,255,0) 38%) ,
+        radial-gradient(130% 90% at 50% -10%, rgba(255,255,255,.16), transparent 60%);
+    pointer-events: none;
+    mix-blend-mode: soft-light;
+    }
+
+/* ========== 변형 프리셋 (강하게 차이나게) ========== */
+/* 기본 프리셋 (모든 날씨 공통으로 사용할 때) */
+    .day-card.va { --variant-strength: 22%; --variant-tint: #ffcf5a; } /* 앰버 */
+    .day-card.vb { --variant-strength: 24%; --variant-tint: #7fd6ff; } /* 스카이 */
+    .day-card.vc { --variant-strength: 22%; --variant-tint: #7de0be; } /* 민트 */
+    .day-card.vd { --variant-strength: 26%; --variant-tint: #a596ff; } /* 라벤더 */
+    .day-card.ve { --variant-strength: 28%; --variant-tint: #ff9aa6; } /* 살몬/핑크 */
+    .day-card.vf { --variant-strength: 20%; --variant-tint: #ffd4ff; } /* 라일락 */
+
+    /* ========== 날씨별로 팔레트 편향(더 자연스러운 변화) ========== */
+    /* 맑음/더움 → 따뜻 계열 위주 */
+    .day-card.sunny.va, .day-card.warm.va { --variant-tint: #ffbe55; --variant-strength: 26%; }
+    .day-card.sunny.ve, .day-card.warm.ve { --variant-tint: #ff8ea0; --variant-strength: 24%; }
+    .day-card.sunny.vf, .day-card.warm.vf { --variant-tint: #ffd6b3; --variant-strength: 20%; }
+
+    /* 비/소나기 → 청록·블루 계열 */
+    .day-card.rain.vb { --variant-tint: #6cc8ff; --variant-strength: 26%; }
+    .day-card.rain.vc { --variant-tint: #70e6c8; --variant-strength: 24%; }
+    .day-card.rain.vd { --variant-tint: #8fb0ff; --variant-strength: 22%; }
+
+    /* 눈 → 차갑고 밝은 블루·라벤더 */
+    .day-card.snow.vb { --variant-tint: #9fdcff; --variant-strength: 24%; }
+    .day-card.snow.vd { --variant-tint: #b6adff; --variant-strength: 22%; }
+    .day-card.snow.vf { --variant-tint: #e6f0ff; --variant-strength: 18%; }
+
+    /* 흐림/구름 → 그레이에 푸른/보라 기운 섞기(가독성 유지) */
+    .day-card.cloudy.vb { --variant-tint: #83b3d9; --variant-strength: 24%; }
+    .day-card.cloudy.vd { --variant-tint: #a59be6; --variant-strength: 22%; }
+    .day-card.cloudy.ve { --variant-tint: #d8a0a9; --variant-strength: 20%; }
+}
+
+/* ===== 작은 화면 최적화 ===== */
+@media (max-width: 360px) {
+  .week { --gap: 10px; --padY: 12px; }
+  .week .day-card { padding: 16px; }
+}

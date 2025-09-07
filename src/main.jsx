@@ -5,6 +5,9 @@ import { Provider } from 'react-redux'
 
 import 'bootstrap/dist/css/bootstrap.min.css';
 import './index.scss'
+import './week.scss'
+import './App.scss';
+import './todos.scss'
 
 import App from './App.jsx'
 import store from './store'               
