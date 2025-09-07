@@ -8,6 +8,7 @@ import './index.scss'
 import './week.scss'
 import './App.scss';
 import './todos.scss'
+import "./setting.scss";
 
 import App from './App.jsx'
 import store from './store'               
@@ -15,7 +16,7 @@ import store from './store'
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <Provider store={store}>
-      <BrowserRouter>
+      <BrowserRouter basename={import.meta.env.BASE_URL}>
         <App />
       </BrowserRouter>
     </Provider>

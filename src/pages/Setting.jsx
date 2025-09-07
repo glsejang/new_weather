@@ -3,7 +3,6 @@ import { getUserData, setUserData } from '../db';
 import { CitySelect } from '../components/CitySelect.jsx';
 import { PlantsSelect } from '../components/PlantSelect.jsx';
 import { useNavigate } from 'react-router-dom';
-
 function Setting() {
   const [savedData, setSavedData] = useState({ city: '', plants: [] });
   const navigate = useNavigate();

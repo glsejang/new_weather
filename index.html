@@ -4,7 +4,26 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Vite + React</title>
+    <title>새날씨</title>
+
+    <script>
+      (function () {
+        try {
+          var url = new URL(window.location.href);
+          var r = url.searchParams.get('redirect');
+          if (r) {
+            // redirect 파라미터를 실제 경로로 복원
+            var to = '/new_weather/' + r.replace(/^\//, '');
+            // 쿼리/해시 보존
+            var rest = (url.hash || '');
+            history.replaceState(null, '', to + rest);
+          }
+        } catch (e) { /* noop */ }
+      })();
+    </script>
+
+
+
   </head>
   <body>
     <div id="root"></div>

@@ -7,6 +7,7 @@ import Home from './pages/Home';
 import Setting from './pages/Setting';
 import Week from './pages/Week';
 import Todos from './pages/Todos';
+import PWAUpdateToast from './components/UpdateToast';
 
 function App() {
   const [userData, setUserData] = useState(null);
@@ -33,6 +34,7 @@ function App() {
     userData && userData.city && userData.plants && userData.plants.length > 0;
 
   return (
+    <>
     <Routes>
       {/* 조건부 렌더링된 진입점 */}
       <Route
@@ -44,7 +46,12 @@ function App() {
       <Route path="/todos" element={<Todos />} />
 
     </Routes>
+    <PWAUpdateToast />
+
+    </>
   );
 }
+
+
 
 export default App;

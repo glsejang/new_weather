@@ -1,0 +1,89 @@
+@use "sass:map";
+
+/* ================== Settings Page ================== */
+.settingPage {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: var(--space-5);
+  display: grid;
+  gap: var(--space-5);
+  color: var(--text);
+
+  h2, h3 {
+    font-weight: 700;
+    margin-bottom: var(--space-3);
+  }
+
+  /* 공통 박스 카드 */
+  .locationBox,
+  .plantsBox,
+  .savedBox {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+    padding: var(--space-5);
+  }
+
+  /* 도시/식물 설정 타이틀 */
+  .locationBox h2,
+  .plantsBox h2 {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-size: var(--fz-lg);
+  }
+
+  /* 저장된 정보 */
+  .savedBox {
+    background: linear-gradient(180deg, #fff, #fafbfc);
+
+    h3 {
+      font-size: var(--fz-md);
+      margin-bottom: var(--space-3);
+    }
+
+    p {
+      font-size: var(--fz-sm);
+      margin: 0 0 var(--space-2);
+      color: var(--text);
+
+      strong {
+        color: var(--muted);
+      }
+    }
+  }
+
+  /* 완료 버튼 */
+  button {
+    min-width: 120px;
+    height: 44px;
+    padding: 0 var(--space-5);
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    background: linear-gradient(180deg, #111218, #1b1d24);
+    color: #fff;
+    font-weight: 700;
+    cursor: pointer;
+    box-shadow: var(--shadow-md);
+    transition: transform .05s ease, box-shadow .15s ease;
+
+    &:active { transform: translateY(1px); }
+    &:hover  { box-shadow: 0 8px 24px rgba(16,24,40,.12); }
+  }
+
+  /* 반응형 */
+  @media (max-width: 560px) {
+    padding: var(--space-4);
+
+    .locationBox,
+    .plantsBox,
+    .savedBox {
+      padding: var(--space-4);
+    }
+
+    button {
+      width: 100%;
+    }
+  }
+}
